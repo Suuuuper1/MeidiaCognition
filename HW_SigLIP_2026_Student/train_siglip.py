@@ -155,7 +155,7 @@ def evaluate_retrieval(model, loader, device, topk=(1, 3, 5, 10)):
     image_embeds = F.normalize(torch.cat(all_image_embeds, dim=0), dim=-1)
     text_embeds = F.normalize(torch.cat(all_text_embeds, dim=0), dim=-1)
 
-    # Group by image_id: Flickr8k has multiple captions per image.
+    # Group by image_id.
     # Keep one visual embedding per unique image and map each caption to its GT image index.
     unique_image_embeds = []
     imageid_to_unique_idx = {}
@@ -178,7 +178,7 @@ def evaluate_retrieval(model, loader, device, topk=(1, 3, 5, 10)):
     metrics = {}
 
     # Text -> Image retrieval
-    sim_t2i = text_embeds @ unique_image_embeds.t()  # [num_captions, num_images]
+    sim_t2i = text_embeds @ unique_image_embeds.t()
     for k in topk:
         kk = min(k, num_images)
         top_indices = sim_t2i.topk(kk, dim=1).indices
@@ -186,7 +186,7 @@ def evaluate_retrieval(model, loader, device, topk=(1, 3, 5, 10)):
         metrics[f"t2i_R@{k}"] = correct
 
     # Image -> Text retrieval
-    sim_i2t = unique_image_embeds @ text_embeds.t()  # [num_images, num_captions]
+    sim_i2t = unique_image_embeds @ text_embeds.t()
     for k in topk:
         kk = min(k, num_captions)
         top_indices = sim_i2t.topk(kk, dim=1).indices
