@@ -115,6 +115,7 @@ def main():
     embed_dim = ckpt_args.get("embed_dim", 256)
     image_width = ckpt_args.get("image_width", 32)
     max_len = ckpt_args.get("max_len", 32)
+    pool_type = ckpt_args.get("pool_type", "mean")
 
     split_file = os.path.join(args.data_dir, f"{args.split}_captions.txt")
     rows = read_caption_file(split_file)
@@ -128,6 +129,7 @@ def main():
         image_width=image_width,
         text_encoder=text_encoder,
         max_len=max_len,
+        pool_type=pool_type,
     )
     model.load_state_dict(checkpoint["model"])
     model = model.to(device)

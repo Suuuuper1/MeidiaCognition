@@ -1,0 +1,56 @@
+[Query 1] Teenagers congregate outside a brick building
+  Top-1: 3571147934_d1c8af1d6e.jpg
+  Top-2: 2992999413_018f48aabc.jpg
+  Top-3: 2371809188_b805497cba.jpg
+  Top-4: 3601978895_9fec23ce0c.jpg
+  Top-5: 421730441_6b2267fd31.jpg
+
+[Query 2] A man in a public road workers uniform sprays water .
+  Top-1: 2086532897_b8714f2237.jpg
+  Top-2: 3416013671_98b5c75046.jpg
+  Top-3: 3173157541_70b16b4318.jpg
+  Top-4: 2851198725_37b6027625.jpg
+  Top-5: 1683444418_815f660379.jpg
+
+[Query 3] A little boy is standing in line for go-karts .
+  Top-1: 224026428_0165164ceb.jpg
+  Top-2: 191003283_992257f835.jpg
+  Top-3: 2443229844_277cded27d.jpg
+  Top-4: 1427391496_ea512cbe7f.jpg
+  Top-5: 2092177624_13ab757e8b.jpg
+
+[Query 4] A snowboarder is jumping over a snowy hill
+  Top-1: 3248352729_ab264b2222.jpg
+  Top-2: 3244470342_c08f6bb17e.jpg
+  Top-3: 3329169877_175cb16845.jpg
+  Top-4: 3108732084_565b423162.jpg
+  Top-5: 3376439178_159e4126de.jpg
+
+[Query 5] A person in a green shirt on a skateboard jumping off of a short set of stairs .
+  Top-1: 3304030264_da3dd18c7b.jpg
+  Top-2: 3440952969_608eb5e42b.jpg
+  Top-3: 246055693_ccb69ac5c6.jpg
+  Top-4: 3660361818_e05367693f.jpg
+  Top-5: 3472066410_065b4f99d3.jpg
+
+[Query 6] Three boys and one girl in a muddy grass field .
+  Top-1: 3170897628_3054087f8c.jpg
+  Top-2: 3176131893_7181c733aa.jpg
+  Top-3: 1425485485_d7c97a5470.jpg
+  Top-4: 765929807_de381cc764.jpg
+  Top-5: 2275372714_017c269742.jpg
+
+[Query 7] A young black girl emerges from the bathroom wrapped in a bathrobe and towel .
+  Top-1: 2991375936_bf4b0a7dc0.jpg
+  Top-2: 1105959054_9c3a738096.jpg
+  Top-3: 428485639_a82635d6ee.jpg
+  Top-4: 2884092603_786b53a74b.jpg
+  Top-5: 2279496715_8ef3ee6edb.jpg
+
+[Query 8] A dog is running through the water with its mouth wide open .
+  Top-1: 1287982439_6578006e22.jpg
+  Top-2: 430803349_a66c91f64e.jpg
+  Top-3: 3407357681_5aeaab5b59.jpg
+  Top-4: 2934000107_d2ff15c814.jpg
+  Top-5: 1433577867_39a1510c43.jpg
+

@@ -1,3 +1,4 @@
 *.log
+*.pt
 __pycache__/
 HW_SigLIP_2026_Student/Flickr8k/

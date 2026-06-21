@@ -10,16 +10,17 @@ from tqdm import tqdm
 from data_loader import Flickr8kDataset, SyntheticPairDataset, build_transform
 from loss import SigLIPLoss
 from models import SigLIPModel
+from training_utils import get_lr, init_weights, set_optimizer_lr
 from utils import AverageMeter, SimpleTokenizer, read_caption_file, set_seed
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train and evaluate a small SigLIP model on Flickr8k.")
-    parser.add_argument("--data-dir", default="Flickr8k", help="Directory containing images/ and caption split files.")
+    parser.add_argument("--data-dir", default="Flickr8k")
     parser.add_argument("--output-dir", default="outputs/siglip_resnet_transformer")
     parser.add_argument("--text-encoder", choices=["transformer", "mlp"], default="transformer")
     parser.add_argument("--embed-dim", type=int, default=256)
-    parser.add_argument("--image-width", type=int, default=32, help="Base channel width of the custom ResNet.")
+    parser.add_argument("--image-width", type=int, default=32)
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--max-len", type=int, default=32)
     parser.add_argument("--min-freq", type=int, default=2)
@@ -27,14 +28,41 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--warmup-epochs", type=int, default=0)
+    parser.add_argument("--min-lr", type=float, default=1e-6)
+    parser.add_argument("--use-cosine-lr", action="store_true")
+    parser.add_argument("--pool-type", choices=["mean", "max", "cls"], default="mean")
+    parser.add_argument("--custom-init", action="store_true")
+    parser.add_argument("--data-aug",action="store_true")
+    parser.add_argument("--optimized",action="store_true")
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--eval-batch-size", type=int, default=128)
-    parser.add_argument("--limit-train", type=int, default=0, help="Use the first N train samples; 0 means all.")
-    parser.add_argument("--limit-eval", type=int, default=0, help="Use the first N val/test samples; 0 means all.")
-    parser.add_argument("--dry-run", action="store_true", help="Run on synthetic pairs to verify the code path.")
-    parser.add_argument("--resume", default="", help="Path to a checkpoint to resume training from.")
+    parser.add_argument("--limit-train", type=int, default=0)
+    parser.add_argument("--limit-eval", type=int, default=0)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--resume", default="")
     parser.add_argument("--seed", type=int, default=2026)
     return parser.parse_args()
+
+
+def apply_optimized_defaults(args):
+    if not args.optimized:
+        return args
+    if args.epochs == 10:
+        args.epochs = 40
+    if args.image_width == 32:
+        args.image_width = 48
+    if args.pool_type == "mean":
+        args.pool_type = "cls"
+    if args.lr == 3e-4:
+        args.lr = 1e-4
+    if args.warmup_epochs == 0:
+        args.warmup_epochs = 3
+    if not args.use_cosine_lr:
+        args.use_cosine_lr = True
+    if not args.custom_init:
+        args.custom_init = True
+    return args
 
 
 def maybe_subset(dataset, limit):
@@ -59,7 +87,7 @@ def build_dataloaders(args):
             image_root=image_root,
             captions_file=os.path.join(args.data_dir, "train_captions.txt"),
             tokenizer=tokenizer,
-            transform=build_transform(args.image_size, train=True),
+            transform=build_transform(args.image_size, train=True, use_aug=args.data_aug),
         )
         val_dataset = Flickr8kDataset(
             image_root=image_root,
@@ -226,7 +254,7 @@ def torch_load_checkpoint(path, map_location):
 
 def apply_resume_model_args(args, checkpoint):
     checkpoint_args = checkpoint.get("args", {})
-    for name in ("text_encoder", "embed_dim", "image_width", "max_len"):
+    for name in ("text_encoder", "embed_dim", "image_width", "max_len", "pool_type"):
         if name in checkpoint_args and getattr(args, name) != checkpoint_args[name]:
             print(
                 f"resume overrides --{name.replace('_', '-')}={getattr(args, name)} "
@@ -259,6 +287,7 @@ def load_training_state(checkpoint, model, criterion, optimizer, device):
 
 def main():
     args = parse_args()
+    args = apply_optimized_defaults(args)
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.output_dir, exist_ok=True)
@@ -278,7 +307,10 @@ def main():
         image_width=args.image_width,
         text_encoder=args.text_encoder,
         max_len=args.max_len,
+        pool_type=args.pool_type,
     ).to(device)
+    if args.custom_init:
+        init_weights(model)
     criterion = SigLIPLoss().to(device)
     optimizer = torch.optim.AdamW(
         list(model.parameters()) + list(criterion.parameters()),
@@ -286,7 +318,10 @@ def main():
         weight_decay=args.weight_decay,
     )
 
-    print(f"device={device} vocab_size={len(tokenizer)} text_encoder={args.text_encoder}")
+    print(
+        f"device={device} vocab_size={len(tokenizer)} text_encoder={args.text_encoder} "
+        f"image_width={args.image_width} pool_type={args.pool_type} data_aug={args.data_aug} optimized={args.optimized}"
+    )
     start_epoch = 1
     best_val_r1 = -1.0
     if args.resume:
@@ -302,15 +337,19 @@ def main():
         )
 
     for epoch in range(start_epoch, args.epochs + 1):
+        if args.use_cosine_lr:
+            cur_lr = get_lr(args.lr, epoch, args.warmup_epochs, args.epochs, args.min_lr)
+            set_optimizer_lr(optimizer, cur_lr)
         train_loss = train_one_epoch(model, criterion, train_loader, optimizer, device)
         val_loss = evaluate_loss(model, criterion, val_loader, device)
         val_metrics = evaluate_retrieval(model, val_loader, device)
         val_r1 = val_metrics["t2i_R@1"]
         scale = criterion.logit_scale.exp().item()
         bias = criterion.logit_bias.item()
+        cur_lr = optimizer.param_groups[0]["lr"]
         metric_text = " ".join([f"{name}={value * 100:.2f}" for name, value in val_metrics.items()])
         print(
-            f"epoch={epoch:03d} train_loss={train_loss:.4f} val_loss={val_loss:.4f} "
+            f"epoch={epoch:03d} lr={cur_lr:.2e} train_loss={train_loss:.4f} val_loss={val_loss:.4f} "
             f"scale={scale:.2f} bias={bias:.2f} {metric_text}"
         )
         if val_r1 > best_val_r1:

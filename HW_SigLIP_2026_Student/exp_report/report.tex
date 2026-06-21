@@ -224,7 +224,7 @@ $final \quad test\_loss=3.0497$。训练效果较好。
 \end{table}
 
 
-\subsection{轻量文本基线}
+\subsection{轻量文本baseline}
 
 运行命令
 
@@ -263,7 +263,7 @@ $final \quad test\_loss=3.0192$。训练效果较好。
 \end{table}
 
 
-可见，两者性能接近，在 Text-to-Image 检索上轻量文本基线甚至略优于 ResNet + Transformer 模型。
+可见，两者性能接近，在 Text-to-Image 检索上轻量文本baseline甚至略优于 ResNet + Transformer 模型。
 
 
 分析原因可能为:
@@ -288,6 +288,8 @@ $final \quad test\_loss=3.0192$。训练效果较好。
 \quad \quad 3. Transformer 引入其他更合适的池化方式。
 
 \quad \quad 4. 优化与训练初始化的策略。
+
+\quad \quad 5. 数据增强。
 
 
 \subsection{可视化}
@@ -369,6 +371,172 @@ $ python app.py
 \end{figure}
 
 
+\section{优化实验}
+
+前文baseline实验采用 20 个 epoch 训练，从 loss 曲线可见损失尚未充分收敛，因此不宜作为优化对比的参照。本节统一将训练轮数固定为 40 epoch，以 ResNet + Transformer、lr=$3\times 10^{-4}$、\texttt{image\_width=32}、平均池化为baseline，在此基础上分别加入各单项优化进行消融实验。所有实验 batch size 均为 64，评估指标与baseline训练一致。
+
+\subsection{优化实现}
+
+    1. 超参数优化，在 40 epoch 基础上，将学习率设为 $1\times 10^{-4}$，并加入 3 轮 warmup 与 cosine 学习率衰减（\texttt{--use-cosine-lr}）。
+
+    2. 增强图像编码器，将 ResNet 基础通道宽度由 32 增大至 48（\texttt{--image-width 48}）。
+
+    3. 改进池化方式，在 Transformer 文本编码器中采用可学习 [CLS] token 池化（\texttt{--pool-type cls}）或 max 池化（\texttt{--pool-type max}），与baseline的平均池化对比。
+
+    4. 初始化策略，对 Linear 使用 Xavier、对 Conv 使用 Kaiming、对 Embedding 使用小方差正态分布（\texttt{--custom-init}）。
+
+    5. 数据增强，在训练集上对图像施加随机水平翻转（\texttt{RandomHorizontalFlip}，$p=0.5$）与颜色抖动（\texttt{ColorJitter}），通过 \texttt{--data-aug} 开关启用；验证集与测试集不做增强。
+
+\subsection{消融实验}
+
+baseline命令如下，运行结果保存至 \texttt{outputs/baseline\_transformer/} 目录：
+
+\begin{lstlisting}
+$ python train_siglip.py \
+$   --data-dir Flickr8k \
+$   --text-encoder transformer \
+$   --epochs 40 \
+$   --batch-size 64 \
+$   --lr 3e-4 \
+$   --image-width 32 \
+$   --pool-type mean \
+$   --output-dir outputs/baseline_transformer
+\end{lstlisting}
+
+在baseline配置基础上，分别单独启用各优化项，命令如下：
+
+
+\textbf{仅超参数}
+\begin{lstlisting}
+$ python train_siglip.py --data-dir Flickr8k --text-encoder transformer \
+$   --epochs 40 --batch-size 64 --lr 1e-4 --warmup-epochs 3 --use-cosine-lr \
+$   --output-dir outputs/ablate_hparams
+\end{lstlisting}
+
+\textbf{仅加宽 ResNet}
+
+\begin{lstlisting}
+$ python train_siglip.py --data-dir Flickr8k --text-encoder transformer \
+$   --epochs 40 --batch-size 64 --image-width 48 \
+$   --output-dir outputs/ablate_image_width
+\end{lstlisting}
+
+\textbf{仅 CLS 池化 / Max 池化 / 自定义初始化}
+
+\begin{lstlisting}
+$ python train_siglip.py ... --pool-type cls --output-dir outputs/ablate_pool_cls
+$ python train_siglip.py ... --pool-type max --output-dir outputs/ablate_pool_max
+$ python train_siglip.py ... --custom-init --output-dir outputs/ablate_init
+\end{lstlisting}
+
+\textbf{仅数据增强}
+
+\begin{lstlisting}
+$ python train_siglip.py --data-dir Flickr8k --text-encoder transformer \
+$   --epochs 40 --batch-size 64 --lr 3e-4 --data-aug \
+$   --output-dir outputs/ablate_data_aug
+\end{lstlisting}
+
+测试集结果汇总如下（指标取自各目录下 \texttt{train.log} 末尾）：
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{c|c|ccc|ccc}
+        \hline
+        \multirow{2}{*}{实验配置} & \multirow{2}{*}{test\_loss} & \multicolumn{3}{c|}{Text-to-Image} & \multicolumn{3}{c}{Image-to-Text} \\
+        & & R@1 & R@5 & R@10 & R@1 & R@5 & R@10 \\
+        \hline
+        baseline（40 epoch，无额外优化） & 3.1387 & 16.83 & 38.28 & 49.53 & 18.57 & 38.84 & 50.49 \\
+        仅超参数（cosine lr） & 2.0826 & 26.17 & 51.68 & 62.88 & 28.91 & 53.59 & 64.80 \\
+        仅加宽 ResNet（width=48） & 3.0503 & 18.04 & 39.97 & 51.80 & 18.78 & 41.06 & 52.83 \\
+        仅 CLS 池化 & 2.9386 & 15.50 & 37.91 & 49.75 & 17.51 & 39.06 & 51.49 \\
+        仅 Max 池化 & 2.9107 & 18.54 & 41.57 & 51.98 & 20.15 & 41.79 & 52.64 \\
+        仅自定义初始化 & 3.0332 & 11.64 & 32.01 & 44.91 & 12.13 & 33.98 & 46.47 \\
+        仅数据增强（flip + color jitter） & 3.2909 & 16.39 & 36.06 & 47.38 & 16.08 & 37.75 & 48.69 \\
+        \hline
+    \end{tabular}
+    \caption{40 epoch baseline与各优化方向的消融实验测试集结果}
+    \label{tab:ablation}
+\end{table}
+
+$\text{final test\_loss}=3.1387$（baseline）。与 20 epoch baseline相比，40 epoch baseline的 Text-to-Image R@1 由 12.38\% 提升至 16.83\%，说明延长训练确实有助于模型收敛。在此基础上，单项优化有提升的是超参数、加宽 Resnet 和 Max 池化。
+
+\subsection{优化效果分析}
+
+根据 40 epoch 下的消融实验，可以得到以下结论：
+
+1. 固定 40 epoch 后，baseline性能明显高于 20 epoch 设置。 baseline t2i\_R@1 从 12.38\% 升至 16.83\%，验证了“20 epoch 时损失未收敛”的判断。
+
+2. 超参数调整（cosine lr + $1\times 10^{-4}$）是本次最有效的单项优化。 在 40 epoch baseline上，t2i\_R@1 由 16.83\% 提升至 26.17\%，i2t\_R@1 由 18.57\% 提升至 28.91\%，测试损失由 3.14 降至 2.08。
+
+3. 加宽 ResNet 有小幅提升。 将 \texttt{image\_width} 增至 48 后，t2i\_R@1 为 18.04\%，略高于baseline（16.83\%），但 test\_loss 与baseline接近（3.05 vs.\ 3.14）。更宽的视觉编码器在小规模数据上有一定帮助，但提升有限，可能受限于数据规模与训练轮数。
+
+4. Max 池化略优于平均池化，CLS 池化反而更差。 Max 池化使 t2i\_R@1 升至 18.54\%，i2t\_R@1 升至 20.15\%，略优于baseline；CLS 池化则降至 15.50\% / 17.51\%。
+
+5. 自定义初始化损害性能。 启用 custom init 后，t2i\_R@1 降至 11.64\%，低于 20 epoch baseline水平。 可能是预训练权重更适合当前任务，自定义初始化导致模型难以收敛。
+
+6. 数据增强没有帮助。 启用数据增强后，t2i\_R@1 由 16.83\% 降至 16.39\%，i2t\_R@1 由 18.57\% 降至 16.08\%，测试损失由 3.14 升至 3.29，说明在当前任务与数据规模下，随机翻转与颜色抖动可能引入了过多噪声，反而损害了模型的对齐能力。
+
+
+\subsection{综合优化策略与最终结果}
+
+综合前述消融实验，经过多次实验测试，本文最终选取以下三项有效优化进行组合：\textbf{超参数调整}（lr=$1\times 10^{-4}$、warmup 3 epoch、cosine 学习率衰减）、\textbf{加宽 ResNet}（\texttt{image\_width=48}）与 \textbf{Max 池化}（\texttt{--pool-type max}）。未采用 CLS 池化、自定义初始化与数据增强。
+
+关于训练轮数：40 epoch baseline在 epoch 38--40 附近验证集 Recall 趋于饱和（t2i\_R@1 约 14.8\%--16.5\%），继续训练损失有反弹迹象，baseline对比统一取 40 epoch。综合优化后模型参数量更大、学习率更低，收敛更慢，在 40 epoch 时验证集 t2i\_R@1 约为 31.3\%，至 64 epoch 仍可继续提升至约 33.6\%，最终方案采用 64 epoch。
+
+运行命令如下，结果保存至 \texttt{outputs/optim\_hparams\_imagewidth\_maxpool\_more/} 目录：
+
+\begin{lstlisting}
+$ python train_siglip.py \
+$   --data-dir Flickr8k \
+$   --text-encoder transformer \
+$   --epochs 64 \
+$   --batch-size 64 \
+$   --lr 1e-4 \
+$   --warmup-epochs 3 \
+$   --use-cosine-lr \
+$   --image-width 48 \
+$   --pool-type max \
+$   --output-dir outputs/optim_hparams_imagewidth_maxpool_more
+\end{lstlisting}
+
+训练loss曲线和最终测试集输出结果如下：
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{image copy.png}
+    \caption{综合优化训练loss曲线}
+    \label{fig:allloss}
+\end{figure}
+
+测试集最终结果与 40 epoch baseline对比如下：
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{c|c|ccc|ccc}
+        \hline
+        \multirow{2}{*}{Model} & \multirow{2}{*}{test\_loss} & \multicolumn{3}{c|}{Text-to-Image} & \multicolumn{3}{c}{Image-to-Text} \\
+        & & R@1 & R@5 & R@10 & R@1 & R@5 & R@10 \\
+        \hline
+        baseline（40 epoch） & 3.1387 & 16.83 & 38.28 & 49.53 & 18.57 & 38.84 & 50.49 \\
+        综合优化（64 epoch） & 2.2124 & 36.73 & 59.91 & 68.88 & 37.90 & 61.28 & 70.24 \\
+        \hline
+    \end{tabular}
+    \caption{40 epoch baseline与综合优化模型在 Flickr8k 测试集上的检索结果对比}
+    \label{tab:final_optimized}
+\end{table}
+
+$\text{final test\_loss}=2.2124$。与 40 epoch baseline相比，综合优化在 Text-to-Image 的 R@1 上提升约 19.9 个百分点（16.83\% $\rightarrow$ 36.73\%），R@5 提升约 21.6 个百分点，R@10 提升约 19.4 个百分点；Image-to-Text 的 R@1 提升约 19.3 个百分点（18.57\% $\rightarrow$ 37.90\%），R@5 提升约 22.4 个百分点，R@10 提升约 19.8 个百分点；测试损失由 3.14 降至 2.21。
+
+最终分析：
+
+1. 最终最有效的优化方案为超参数（cosine lr） + Max 池化 + 加宽 Resnet。单独超参数优化在 40 epoch 下 t2i\_R@1 为 26.17\%；单独加宽 ResNet 为 18.04\%；单独 Max 池化为 18.54\%。组合后在 64 epoch 下达到 36.73\%，说明更宽的视觉编码器、更合适的池化方式与 cosine 学习率策略能相互促进，但需要更长训练充分收敛。
+
+2. Max 池化优于 CLS 池化。 消融实验中 Max 池化在 40 epoch baseline上略优于 mean 与 cls，最终方案选用 max pooling，和 Transformer 文本侧保留 token 特征的需求一致。
+
+3. epoch 数需与模型复杂度匹配。 baseline模型较简单，40 epoch 已接近最优；综合优化后模型容量与学习率 schedule 均改变，64 epoch 时验证集 Recall 仍高于 40 epoch（t2i\_R@1 由 31.3\% 升至 33.6\%），说明对优化配置来说 40 epoch 训练不够，而非过拟合。
+
+4. 与预训练 SigLIP 仍有差距，但自训练模型有很大提升。 综合优化后 Recall 接近 37\%，较初始 20 epoch baseline（t2i\_R@1 约 12\%）提升很大，距离预训练大模型仍有差距，主要受限于 Flickr8k 数据规模与模型容量。
 
 
 \end{document}
